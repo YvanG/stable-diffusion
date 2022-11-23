@@ -77,7 +77,7 @@ def put_watermark(img, wm_encoder=None):
 def load_replacement(x):
     try:
         hwc = x.shape
-        y = Image.open("assets/rick.jpeg").convert("RGB").resize((hwc[1], hwc[0]))
+        y = Image.open("../assets/rick.jpeg").convert("RGB").resize((hwc[1], hwc[0]))
         y = (np.array(y)/255.0).astype(x.dtype)
         assert y.shape == x.shape
         return y
@@ -86,12 +86,13 @@ def load_replacement(x):
 
 
 def check_safety(x_image):
-    safety_checker_input = safety_feature_extractor(numpy_to_pil(x_image), return_tensors="pt")
-    x_checked_image, has_nsfw_concept = safety_checker(images=x_image, clip_input=safety_checker_input.pixel_values)
-    assert x_checked_image.shape[0] == len(has_nsfw_concept)
-    for i in range(len(has_nsfw_concept)):
-        if has_nsfw_concept[i]:
-            x_checked_image[i] = load_replacement(x_checked_image[i])
+    # safety_checker_input = safety_feature_extractor(numpy_to_pil(x_image), return_tensors="pt")
+    # x_checked_image, has_nsfw_concept = safety_checker(images=x_image, clip_input=safety_checker_input.pixel_values)
+    # assert x_checked_image.shape[0] == len(has_nsfw_concept)
+    # for i in range(len(has_nsfw_concept)):
+    #     if has_nsfw_concept[i]:
+    #         x_checked_image[i] = load_replacement(x_checked_image[i])
+    x_checked_image, has_nsfw_concept = x_image, None
     return x_checked_image, has_nsfw_concept
 
 
@@ -242,11 +243,15 @@ def main():
 
     seed_everything(opt.seed)
 
+    # needed when model is in half mode, remove if not using half mode
+    torch.set_default_tensor_type(torch.HalfTensor)
+
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
+    model = model.half()
 
     if opt.dpm_solver:
         sampler = DPMSolverSampler(model)
