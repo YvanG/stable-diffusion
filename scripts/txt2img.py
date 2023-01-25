@@ -51,7 +51,10 @@ def load_model_from_config(config, ckpt, verbose=False):
     pl_sd = torch.load(ckpt, map_location="cpu")
     if "global_step" in pl_sd:
         print(f"Global Step: {pl_sd['global_step']}")
-    sd = pl_sd["state_dict"]
+    try:
+        sd = pl_sd["state_dict"]
+    except:
+        sd = pl_sd
     model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
     if len(m) > 0 and verbose:
@@ -107,6 +110,13 @@ def main():
         help="the prompt to render"
     )
     parser.add_argument(
+        "--negative_prompt",
+        type=str,
+        nargs="?",
+        default="",
+        help="the negative prompt to render"
+    )
+    parser.add_argument(
         "--outdir",
         type=str,
         nargs="?",
@@ -153,7 +163,7 @@ def main():
         "--ddim_eta",
         type=float,
         default=0.0,
-        help="ddim eta (eta=0.0 corresponds to deterministic sampling",
+        help="ddim eta (eta=0.0 corresponds to deterministic sampling)",
     )
     parser.add_argument(
         "--n_iter",
@@ -244,14 +254,14 @@ def main():
     seed_everything(opt.seed)
 
     # needed when model is in half mode, remove if not using half mode
-    torch.set_default_tensor_type(torch.HalfTensor)
+    # torch.set_default_tensor_type(torch.HalfTensor)
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
-    model = model.half()
+    # model = model.half()
 
     if opt.dpm_solver:
         sampler = DPMSolverSampler(model)
@@ -272,6 +282,7 @@ def main():
     n_rows = opt.n_rows if opt.n_rows > 0 else batch_size
     if not opt.from_file:
         prompt = opt.prompt
+        negative_prompt = opt.negative_prompt
         assert prompt is not None
         data = [batch_size * [prompt]]
 
@@ -299,7 +310,9 @@ def main():
                 for n in trange(opt.n_iter, desc="Sampling"):
                     for prompts in tqdm(data, desc="data"):
                         uc = None
-                        if opt.scale != 1.0:
+                        if negative_prompt:
+                            uc = model.get_learned_conditioning(len(prompts) * [negative_prompt])
+                        elif opt.scale != 1.0:
                             uc = model.get_learned_conditioning(batch_size * [""])
                         if isinstance(prompts, tuple):
                             prompts = list(prompts)
